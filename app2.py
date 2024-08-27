@@ -1,90 +1,88 @@
 import streamlit as st
 import pandas as pd
-from joblib import load
-import time
+import joblib
+import plotly.graph_objects as go
 
-# Load the saved model
-model_filename = 'model.joblib'
-loaded_model = load(model_filename)
-st.write(f"Model loaded from {model_filename}")
+st.set_page_config(page_title="Advanced Fraud Detection Tester", layout="wide")
 
-# Function to preprocess new data
-def preprocess_data(data):
-    # Ensure the data has the same columns as used during training
-    # Exclude 'isFraud', 'isFlaggedFraud', 'nameOrig', 'nameDest' as they were dropped during training
-    columns_to_use = ['step', 'type', 'amount', 'oldbalanceOrg', 'newbalanceOrig', 'oldbalanceDest', 'newbalanceDest']
-    return data[columns_to_use]
+# Load the model
+@st.cache_resource
+def load_model():
+    return joblib.load('model.joblib')
 
-# Streamlit app
-st.title('Fraud Detection Web App')
-
-# Input fields
-step = st.number_input('Step', min_value=1, value=1)
-transaction_type = st.selectbox('Type', ['PAYMENT', 'TRANSFER', 'CASH_OUT', 'DEBIT'])
-amount = st.number_input('Amount', min_value=0.0, value=1000.0)
-userphone = st.text_input('Phone', '0240818849')
-oldbalanceOrg = st.number_input('Old Balance Origin', min_value=0.0, value=1001.0)
-newbalanceOrig = st.number_input('New Balance Origin', min_value=0.0, value=0.0)
-oldbalanceDest = st.number_input('Old Balance Destination', min_value=0.0, value=0.0)
-newbalanceDest = st.number_input('New Balance Destination', min_value=0.0, value=1001.0)
-nameDest = st.text_input('Name Destination', 'C38997010')
+model = load_model()
 
 
+st.title('🕵️‍♀️ Advanced Fraud Detection Model Tester')
 
-# Button to predict
-if st.button('Predict'):
-    # Create a DataFrame with the input data
-    new_data = pd.DataFrame({
-        'step': [step],
-        'type': [transaction_type],
-        'amount': [amount],
-        'oldbalanceOrg': [oldbalanceOrg],
-        'newbalanceOrig': [newbalanceOrig],
-        'oldbalanceDest': [oldbalanceDest],
-        'newbalanceDest': [newbalanceDest],
-        'nameOrig': ['C840083671'],  # These columns will be dropped in preprocessing
-        'nameDest': [nameDest],
-        'isFraud': [1],
-        'isFlaggedFraud': [0]
-    })
+col1, col2 = st.columns([2, 1])
 
-    # Preprocess the new data
-    preprocessed_data = preprocess_data(new_data)
+with col1:
+    st.header("Transaction Details")
+    
+    step = st.slider('Step', min_value=1, max_value=1000, value=1)
+    transaction_type = st.selectbox('Transaction Type', ['TRANSFER', 'CASH_OUT', 'PAYMENT', 'DEBIT', 'CASH_IN'])
+    amount = st.number_input('Amount ($)', min_value=0.0, value=100.0, format="%.2f")
+    
+    col1a, col1b = st.columns(2)
+    with col1a:
+        name_orig = st.text_input('Origin Account', value='C1231006815')
+        old_balance_org = st.number_input('Old Balance Origin ($)', min_value=0.0, value=100.0, format="%.2f")
+        new_balance_orig = st.number_input('New Balance Origin ($)', min_value=0.0, value=60.0, format="%.2f")
+    
+    with col1b:
+        name_dest = st.text_input('Destination Account', value='M1979787155')
+        old_balance_dest = st.number_input('Old Balance Destination ($)', min_value=0.0, value=0.0, format="%.2f")
+        new_balance_dest = st.number_input('New Balance Destination ($)', min_value=0.0, value=100.0, format="%.2f")
+    
+    is_flagged_fraud = st.checkbox('Flagged as Potential Fraud')
 
-    # Make predictions
-    predictions = loaded_model.predict(preprocessed_data)
-    prediction_probabilities = loaded_model.predict_proba(preprocessed_data)
+with col2:
+    st.header("Prediction")
+    if st.button('Analyze Transaction', key='predict'):
+        input_data = pd.DataFrame({
+            'step': [step],
+            'type': [transaction_type],
+            'amount': [amount],
+            'nameOrig': [name_orig],
+            'oldbalanceOrg': [old_balance_org],
+            'newbalanceOrig': [new_balance_orig],
+            'nameDest': [name_dest],
+            'oldbalanceDest': [old_balance_dest],
+            'newbalanceDest': [new_balance_dest],
+            'isFlaggedFraud': [int(is_flagged_fraud)]
+        })
 
-    # Display results
-    st.write("Predictions:", predictions)
-    st.write("Prediction Probabilities:", prediction_probabilities)
+        prediction = model.predict(input_data)
+        probability = model.predict_proba(input_data)
 
-    # Interpret results
-    for i, pred in enumerate(predictions):
-        st.write(f"\nTransaction {i+1}:")
-        st.write(f"Predicted class: {'Fraudulent' if pred == 1 else 'Not Fraudulent'}")
-        st.write(f"Probability of being fraudulent: {prediction_probabilities[i][1]:.4f}")
+        if prediction[0] == 1:
+            st.error("⚠️ Potential Fraud Detected!")
+        else:
+            st.success("✅ Transaction Appears Legitimate")
 
-        # Add to Triang list if fraudulent
-        if pred == 1:
-            st.session_state.triang_list.append(userphone)
+        fig = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = probability[0][1] * 100,
+            domain = {'x': [0, 1], 'y': [0, 1]},
+            title = {'text': "Fraud Probability"},
+            gauge = {
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "darkred"},
+                'steps': [
+                    {'range': [0, 50], 'color': "lightgreen"},
+                    {'range': [50, 75], 'color': "yellow"},
+                    {'range': [75, 100], 'color': "red"}
+                ],
+                'threshold': {
+                    'line': {'color': "red", 'width': 4},
+                    'thickness': 0.75,
+                    'value': probability[0][1] * 100
+                }
+            }
+        ))
 
+        st.plotly_chart(fig)
 
-# Display Triang list
-if 'triang_list' not in st.session_state:
-    st.session_state.triang_list = []
-
-st.subheader('T-Red List')
-st.write(st.session_state.triang_list)
-
-
-# Hyperloca field and button
-hyperloca = st.text_input('Hyperloca', '')
-if st.button('Find Hyperloca'):
-    if hyperloca:
-        # Show progress bar
-        progress_bar = st.progress(0)
-        for i in range(100):
-            time.sleep(0.05)  # Simulate a 5-second process
-            progress_bar.progress(i + 1)
-        st.write("Target located at long:000,lat:000")
+st.sidebar.header("About")
+st.sidebar.info("This advanced fraud detection tester allows you to input transaction details and receive a fraud probability prediction based on a machine learning model.")

@@ -86,3 +86,15 @@ with col2:
 
 st.sidebar.header("About")
 st.sidebar.info("This advanced fraud detection tester allows you to input transaction details and receive a fraud probability prediction based on a machine learning model.")
+
+# Add this new section
+st.sidebar.header("How Fraud is Detected")
+st.sidebar.info("""
+In this specific dataset, fraudulent behavior is characterized by agents attempting to profit by:
+
+1. Taking control of customer accounts
+2. Transferring funds to another account
+3. Cashing out of the system
+
+The model analyzes transaction patterns and account behaviors to identify these suspicious activities.
+""")
